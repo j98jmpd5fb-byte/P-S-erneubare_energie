@@ -42,6 +42,27 @@ def test_storage_never_goes_below_zero():
     assert plant.storage_MWh >= 0
 
 
+def test_storage_respects_operating_bounds():
+    plant = HydroPlant(
+        name="Bounded plant",
+        storage_capacity_MWh=1000,
+        turbine_power_MW=100,
+        pump_power_MW=100,
+        roundtrip_efficiency=0.8,
+        initial_storage_MWh=500,
+        min_storage_fraction=0.1,
+        max_storage_fraction=0.9,
+    )
+
+    for _ in range(20):
+        plant.pump(plant.pump_power_MW, 1)
+    assert plant.storage_MWh == 900
+
+    for _ in range(20):
+        plant.generate(plant.turbine_power_MW, 1)
+    assert plant.storage_MWh == 100
+
+
 def test_pumping_costs_money():
     plant = make_test_plant()
     results = run_simulation(make_market_data([10]), plant, 20, 80)

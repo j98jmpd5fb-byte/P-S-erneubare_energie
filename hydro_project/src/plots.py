@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path("/private/tmp/hydro_project_mpl")))
@@ -43,12 +44,21 @@ def _plot_storage(results, output_dir):
 
 
 def _plot_actions(results, output_dir):
-    action_to_value = {"pump": -1, "idle": 0, "generate": 1}
-    action_values = results["action"].map(action_to_value)
+    start = results["datetime"].min()
+    end = start + timedelta(days=7)
+    weekly_results = results[
+        (results["datetime"] >= start) & (results["datetime"] < end)
+    ]
 
-    fig, ax = plt.subplots(figsize=(10, 3))
-    ax.step(results["datetime"], action_values, where="mid", color="tab:purple")
-    ax.set_title("Hourly operation action")
+    action_to_value = {"pump": -1, "idle": 0, "generate": 1}
+    action_values = weekly_results["action"].map(action_to_value)
+
+    fig, ax = plt.subplots(figsize=(11, 3.5))
+    ax.step(weekly_results["datetime"], action_values, where="mid", color="tab:purple")
+    ax.set_title(
+        "Hourly operation action "
+        f"({start:%Y-%m-%d} to {(end - timedelta(hours=1)):%Y-%m-%d})"
+    )
     ax.set_yticks([-1, 0, 1])
     ax.set_yticklabels(["pump", "idle", "generate"])
     ax.set_xlabel("Time")

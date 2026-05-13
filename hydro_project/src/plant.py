@@ -19,6 +19,8 @@ class HydroPlant:
         initial_storage_MWh,
         pump_efficiency=None,
         turbine_efficiency=1.0,
+        min_storage_fraction=0.0,
+        max_storage_fraction=1.0,
     ):
         if not 0 < roundtrip_efficiency <= 1:
             raise ValueError("roundtrip_efficiency must be between 0 and 1.")
@@ -28,12 +30,16 @@ class HydroPlant:
             raise ValueError("Power values cannot be negative.")
         if not 0 <= initial_storage_MWh <= storage_capacity_MWh:
             raise ValueError("Initial storage must be within plant capacity.")
+        if not 0 <= min_storage_fraction < max_storage_fraction <= 1:
+            raise ValueError("Storage fractions must satisfy 0 <= min < max <= 1.")
 
         self.name = name
         self.storage_capacity_MWh = float(storage_capacity_MWh)
         self.turbine_power_MW = float(turbine_power_MW)
         self.pump_power_MW = float(pump_power_MW)
         self.roundtrip_efficiency = float(roundtrip_efficiency)
+        self.min_storage_MWh = self.storage_capacity_MWh * float(min_storage_fraction)
+        self.max_storage_MWh = self.storage_capacity_MWh * float(max_storage_fraction)
         self.initial_storage_MWh = float(initial_storage_MWh)
         self.storage_MWh = float(initial_storage_MWh)
 
@@ -47,10 +53,10 @@ class HydroPlant:
         )
 
     def can_pump(self):
-        return self.pump_power_MW > 0 and self.storage_MWh < self.storage_capacity_MWh
+        return self.pump_power_MW > 0 and self.storage_MWh < self.max_storage_MWh
 
     def can_generate(self):
-        return self.turbine_power_MW > 0 and self.storage_MWh > 0
+        return self.turbine_power_MW > 0 and self.storage_MWh > self.min_storage_MWh
 
     def pump(self, power_MW, duration_h):
         """Buy electricity and store the useful part after pumping losses.
@@ -62,7 +68,7 @@ class HydroPlant:
 
         requested_power = min(float(power_MW), self.pump_power_MW)
         requested_input_MWh = max(requested_power, 0.0) * duration_h
-        available_storage_MWh = self.storage_capacity_MWh - self.storage_MWh
+        available_storage_MWh = self.max_storage_MWh - self.storage_MWh
 
         # If the reservoir is almost full, buy only enough electricity to fill it.
         input_limited_by_space = available_storage_MWh / self.pump_efficiency
@@ -70,7 +76,7 @@ class HydroPlant:
         stored_energy_MWh = electricity_bought_MWh * self.pump_efficiency
 
         self.storage_MWh = min(
-            self.storage_capacity_MWh,
+            self.max_storage_MWh,
             self.storage_MWh + stored_energy_MWh,
         )
         return electricity_bought_MWh
@@ -85,12 +91,13 @@ class HydroPlant:
 
         requested_power = min(float(power_MW), self.turbine_power_MW)
         requested_generation_MWh = max(requested_power, 0.0) * duration_h
-        possible_generation_MWh = self.storage_MWh * self.turbine_efficiency
+        usable_storage_MWh = self.storage_MWh - self.min_storage_MWh
+        possible_generation_MWh = usable_storage_MWh * self.turbine_efficiency
         generation_MWh = min(requested_generation_MWh, possible_generation_MWh)
 
         storage_used_MWh = generation_MWh / self.turbine_efficiency
-        self.storage_MWh = max(0.0, self.storage_MWh - storage_used_MWh)
+        self.storage_MWh = max(self.min_storage_MWh, self.storage_MWh - storage_used_MWh)
 
-        if math.isclose(self.storage_MWh, 0.0, abs_tol=1e-9):
-            self.storage_MWh = 0.0
+        if math.isclose(self.storage_MWh, self.min_storage_MWh, abs_tol=1e-9):
+            self.storage_MWh = self.min_storage_MWh
         return generation_MWh

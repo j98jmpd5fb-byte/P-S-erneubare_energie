@@ -34,6 +34,8 @@ def load_plant_parameters(path):
         pump_power_MW=row["pump_power_MW"],
         roundtrip_efficiency=row["roundtrip_efficiency"],
         initial_storage_MWh=row["initial_storage_MWh"],
+        min_storage_fraction=row.get("min_storage_fraction", 0.0),
+        max_storage_fraction=row.get("max_storage_fraction", 1.0),
     )
 
 
