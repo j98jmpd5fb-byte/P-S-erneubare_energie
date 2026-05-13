@@ -2,6 +2,7 @@ import pandas as pd
 
 from src.plant import HydroPlant
 from src.simulation import run_simulation
+from src.strategy import build_day_ahead_schedule
 
 
 def make_test_plant():
@@ -96,3 +97,32 @@ def test_simulation_returns_expected_columns():
         "load_MW",
     ]
     assert list(results.columns) == expected_columns
+
+
+def test_day_ahead_schedule_uses_daily_cheapest_and_most_expensive_hours():
+    market_data = make_market_data([50, 10, 80, 30, 100, 20])
+    scheduled = build_day_ahead_schedule(
+        market_data,
+        pump_hours_per_day=2,
+        generation_hours_per_day=2,
+    )
+
+    assert scheduled["scheduled_action"].tolist() == [
+        "idle",
+        "pump",
+        "generate",
+        "idle",
+        "generate",
+        "pump",
+    ]
+
+
+def test_simulation_can_use_scheduled_actions():
+    plant = make_test_plant()
+    market_data = make_market_data([100])
+    market_data["scheduled_action"] = ["pump"]
+
+    results = run_simulation(market_data, plant, action_column="scheduled_action")
+
+    assert results.loc[0, "action"] == "pump"
+    assert results.loc[0, "pump_MWh"] > 0

@@ -3,7 +3,13 @@ import pandas as pd
 from src.strategy import threshold_strategy
 
 
-def run_simulation(market_data, plant, low_price_threshold, high_price_threshold):
+def run_simulation(
+    market_data,
+    plant,
+    low_price_threshold=None,
+    high_price_threshold=None,
+    action_column=None,
+):
     """Run a transparent hourly pumped-storage simulation.
 
     Pumped storage is treated like a battery: it buys electricity, stores less
@@ -15,7 +21,10 @@ def run_simulation(market_data, plant, low_price_threshold, high_price_threshold
 
     for _, row in market_data.iterrows():
         price = row["price_EUR_per_MWh"]
-        action = threshold_strategy(price, low_price_threshold, high_price_threshold)
+        if action_column:
+            action = row[action_column]
+        else:
+            action = threshold_strategy(price, low_price_threshold, high_price_threshold)
 
         pump_MWh = 0.0
         generation_MWh = 0.0
