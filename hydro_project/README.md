@@ -5,9 +5,8 @@ storage hydropower complex, using Grande Dixence / Cleuson-Dixence as a
 hypothetical case, with additional pumped-storage capability could be
 economically profitable and useful for the Swiss electricity system.
 
-The model simulates a simple day-ahead operating rule: for each day, pair
-cheap pumping hours with expensive generation hours, and only operate when the
-price spread is large enough to cover round-trip losses.
+The model simulates a simple operating rule: buy electricity when prices are
+low, pump water uphill, and generate electricity when prices are high.
 
 ## Important Modelling Point
 
@@ -23,15 +22,12 @@ hours. It does not create additional net energy.
 ## First-Version Assumptions
 
 - The model runs hour by hour.
-- It uses a simple day-ahead strategy, not advanced linear programming.
+- It uses a simple threshold strategy, not advanced linear programming.
 - It ignores detailed grid constraints and water inflows.
-- The next day's hourly prices are assumed to be known when scheduling
-  pumping and generation.
-- Pumping/generation pairs are skipped if the day-ahead spread does not cover
-  round-trip efficiency losses.
+- Prices are assumed to be known for the simulated period.
 - Pumping and generation are limited by plant power ratings.
-- Storage is kept between configured minimum and maximum operating levels.
-- Round-trip efficiency is set in `data/plant_parameters.csv`.
+- Storage is kept between zero and the maximum storage capacity.
+- Round-trip efficiency is set to 80 percent in the sample case.
 - The import reduction metric is simplified and is not a Swissgrid power-flow
   calculation.
 
@@ -104,9 +100,6 @@ Replace `data/plant_parameters.csv` with one row using these columns:
 ```text
 plant_name, storage_capacity_MWh, turbine_power_MW, pump_power_MW, roundtrip_efficiency, initial_storage_MWh
 ```
-
-The optional columns `min_storage_fraction` and `max_storage_fraction` define
-operating storage limits as fractions of total storage capacity.
 
 Keep units consistent. Prices are EUR/MWh, power is MW, hourly energy is MWh.
 
