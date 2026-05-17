@@ -38,32 +38,32 @@ print(f'Export 75% threshold: {df["export_MW"].quantile(0.75):.1f} MW')
 print(f'Surplus 75% threshold: {pd.Series(surplus[surplus > 0]).quantile(0.75):.1f} MW')
 print(f'Deficit 75% threshold: {pd.Series(deficit[deficit > 0]).quantile(0.75):.1f} MW')
 
-import_th = df["import_MW"].quantile(0.75)
-export_th = df["export_MW"].quantile(0.75)
+# import_th = df["import_MW"].quantile(0.75)
+# export_th = df["export_MW"].quantile(0.75)
 
-net_balance = df["production_MW"] - df["load_MW"]
-surplus = np.maximum(net_balance, 0)
-deficit = np.maximum(-net_balance, 0)
+# net_balance = df["production_MW"] - df["load_MW"]
+# surplus = np.maximum(net_balance, 0)
+# deficit = np.maximum(-net_balance, 0)
 
-surplus_th = pd.Series(surplus[surplus > 0]).quantile(0.75)
-deficit_th = pd.Series(deficit[deficit > 0]).quantile(0.75)
+# surplus_th = pd.Series(surplus[surplus > 0]).quantile(0.75)
+# deficit_th = pd.Series(deficit[deficit > 0]).quantile(0.75)
 
-print("\nCondition counts:")
-print("High import hours:", (df["import_MW"] >= import_th).sum())
-print("High export hours:", (df["export_MW"] >= export_th).sum())
-print("High surplus hours:", (surplus >= surplus_th).sum())
-print("High deficit hours:", (deficit >= deficit_th).sum())
+# print("\nCondition counts:")
+# print("High import hours:", (df["import_MW"] >= import_th).sum())
+# print("High export hours:", (df["export_MW"] >= export_th).sum())
+# print("High surplus hours:", (surplus >= surplus_th).sum())
+# print("High deficit hours:", (deficit >= deficit_th).sum())
 
-print("\nCombined conditions:")
-print(
-    "High import AND deficit:",
-    ((df["import_MW"] >= import_th) & (net_balance < 0)).sum()
-)
-print(
-    "High export AND surplus:",
-    ((df["export_MW"] >= export_th) & (net_balance > 0)).sum()
-)
-print(
-    "High deficit:",
-    (deficit >= deficit_th).sum()
-)
+# print("\nCombined conditions:")
+# print(
+#     "High import AND deficit:",
+#     ((df["import_MW"] >= import_th) & (net_balance < 0)).sum()
+# )
+# print(
+#     "High export AND surplus:",
+#     ((df["export_MW"] >= export_th) & (net_balance > 0)).sum()
+# )
+# print(
+#     "High deficit:",
+#     (deficit >= deficit_th).sum()
+# )
