@@ -2,6 +2,7 @@ import pandas as pd
 
 from src.plant import HydroPlant
 from src.simulation import run_simulation
+from src.strategy import rolling_24h_price_arbitrage_strategy
 
 
 def make_test_plant():
@@ -85,6 +86,13 @@ def test_simulation_returns_expected_columns():
     expected_columns = [
         "datetime",
         "price_EUR_per_MWh",
+        "load_MW",
+        "production_MW",
+        "import_MW",
+        "export_MW",
+        "net_balance_MW",
+        "deficit_MW",
+        "surplus_MW",
         "action",
         "pump_MWh",
         "generation_MWh",
@@ -92,7 +100,27 @@ def test_simulation_returns_expected_columns():
         "cost_EUR",
         "revenue_EUR",
         "profit_EUR",
-        "import_MW",
-        "load_MW",
+        "deficit_after_storage_MW",
+        "surplus_after_storage_MW",
+        "import_reduction_MWh",
+        "surplus_absorbed_MWh",
+        "low_threshold",
+        "high_threshold",
+        "scenario",
     ]
     assert list(results.columns) == expected_columns
+
+
+def test_rolling_24h_strategy_records_thresholds():
+    plant = make_test_plant()
+    market_data = make_market_data([10, 20, 30, 40, 50, 60])
+    results = run_simulation(
+        market_data,
+        plant,
+        strategy=rolling_24h_price_arbitrage_strategy,
+        strategy_kwargs={},
+    )
+    assert "low_threshold" in results.columns
+    assert "high_threshold" in results.columns
+    assert not results["low_threshold"].isna().all()
+    assert not results["high_threshold"].isna().all()

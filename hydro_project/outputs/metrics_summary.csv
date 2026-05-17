@@ -1,0 +1,3 @@
+total_revenue_EUR,total_cost_EUR,total_profit_EUR,total_pumped_MWh,total_generated_MWh,roundtrip_losses_MWh,pumping_hours,generation_hours,final_storage_MWh,total_deficit_before_MWh,total_deficit_after_MWh,deficit_reduction_MWh,total_surplus_before_MWh,total_surplus_after_MWh,surplus_absorbed_MWh,import_reduction_MWh,storage_cycles,scenario,strategy
+228714065.39999998,0.0,228714065.39999998,0.0,1653915.0,0.0,0,2536,82045.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,generation_only_rolling_24h,"Current hydropower plant, no pumping"
+408729674.04,118607211.0,290122463.04,1721700.0,3048447.0,0.0,1913,2132,82090.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0498170731707317,rolling_24h_price_arbitrage,Rolling 24h price arbitrage
