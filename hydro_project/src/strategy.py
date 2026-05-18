@@ -91,29 +91,99 @@ def generation_only_rolling_24h_strategy(current_row, future_window=None, **kwar
 
 def rolling_24h_price_arbitrage_strategy(current_row, future_window=None, **kwargs):
     prices = future_window["price_EUR_per_MWh"] if future_window is not None else []
-    low_threshold, high_threshold = _window_thresholds(prices)
-    if low_threshold is None or high_threshold is None:
-        price = float(current_row["price_EUR_per_MWh"])
-        low_threshold = high_threshold = price
-    action = threshold_strategy(
-        float(current_row["price_EUR_per_MWh"]),
-        low_threshold,
-        high_threshold,
-    )
 
+    low_quantile = kwargs.get("low_quantile", 0.25)
+    high_quantile = kwargs.get("high_quantile", 0.75)
+    round_trip_efficiency = kwargs.get("round_trip_efficiency", 0.8)
+    safety_margin = kwargs.get("safety_margin", 1.05)
+
+    current_price = float(current_row["price_EUR_per_MWh"])
     storage_fraction = float(current_row.get("storage_fraction", 0.5))
 
-    if action == "pump" and storage_fraction > 0.90:
+    if prices is None or len(prices) == 0:
+        return {
+            "action": "idle",
+            "low_threshold": current_price,
+            "high_threshold": current_price,
+        }
+
+    low_threshold = prices.quantile(low_quantile)
+    high_threshold = prices.quantile(high_quantile)
+
+    required_future_price = (
+        current_price / round_trip_efficiency
+    ) * safety_margin
+
+    profitable_to_pump = (
+        current_price <= low_threshold
+        and high_threshold > required_future_price
+    )
+
+    attractive_to_generate = current_price >= high_threshold
+
+    if profitable_to_pump and storage_fraction <= 0.90:
+        action = "pump"
+
+    elif attractive_to_generate:
+        action = "generate"
+
+    else:
         action = "idle"
 
-    if storage_fraction > 0.97 and action != "pump":
+    # Emergency rule: if storage is almost full, generate to avoid wasting inflow/storage
+    if storage_fraction > 0.97:
         action = "generate"
 
     return {
         "action": action,
         "low_threshold": low_threshold,
         "high_threshold": high_threshold,
+        "required_future_price": required_future_price,
     }
+
+
+def renewable_surplus_plus_rolling_price_strategy(current_row, future_window=None, **kwargs):
+    prices = future_window["price_EUR_per_MWh"] if future_window is not None else []
+
+    min_surplus_mwh = kwargs.get("min_surplus_mwh", 0)
+    min_renewable_fraction = kwargs.get("min_renewable_fraction", 0.5)
+
+    high_quantile = kwargs.get("high_quantile", 0.75)
+    round_trip_efficiency = kwargs.get("round_trip_efficiency", 0.8)
+    safety_margin = kwargs.get("safety_margin", 1.05)
+    support_margin = kwargs.get("support_margin", 1.0)
+
+    current_price = float(current_row["price_EUR_per_MWh"])
+
+    surplus_available = (
+        current_row["grid_surplus_MWh"] > min_surplus_mwh
+        and current_row["renewable_fraction"] >= min_renewable_fraction
+    )
+
+    if surplus_available and prices is not None and len(prices) > 0:
+        high_threshold = prices.quantile(high_quantile)
+
+        required_future_price = (
+            current_price / round_trip_efficiency
+        ) * safety_margin
+
+        support_acceptable = (
+            high_threshold > required_future_price * support_margin
+        )
+
+        if support_acceptable:
+            return {
+                "action": "pump",
+                "support_pump": True,
+                "high_threshold": high_threshold,
+                "required_future_price": required_future_price,
+            }
+
+    return rolling_24h_price_arbitrage_strategy(
+        current_row,
+        future_window,
+        **kwargs
+    )
 
 
 def import_reduction_strategy(current_row, future_window=None, **kwargs):
@@ -229,4 +299,5 @@ SCENARIO_STRATEGIES = {
     "import_reduction": import_reduction_strategy,
     "surplus_absorption": surplus_absorption_strategy,
     "renewable_balancing": renewable_balancing_strategy,
+    "renewable_surplus_plus_rolling_price": renewable_surplus_plus_rolling_price_strategy,
 }

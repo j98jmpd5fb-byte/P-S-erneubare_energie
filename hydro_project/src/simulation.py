@@ -115,6 +115,7 @@ def run_simulation(
                 "natural_inflow_MWh": natural_inflow_MWh,
                 "stored_inflow_MWh": stored_inflow_MWh,
                 "spilled_inflow_MWh": spilled_inflow_MWh,
+                "renewable_fraction": row.get("renewable_fraction", 0),
             }
         )
 

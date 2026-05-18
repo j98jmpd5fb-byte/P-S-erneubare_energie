@@ -76,6 +76,19 @@ def load_plant_parameters(path):
 
 def load_market_data(path):
     data = pd.read_csv(path)
+    # Preserve original aggregated column names (e.g. total_production_MW_avg)
+    # but also create short convenience columns expected by the simulator
+    mapping = {
+        "total_import_MW_avg": "import_MW",
+        "total_export_MW_avg": "export_MW",
+        "total_production_MW_avg": "production_MW",
+        "total_consumption_MW_avg": "load_MW",
+    }
+
+    for old_col, new_col in mapping.items():
+        if old_col in data.columns and new_col not in data.columns:
+            data[new_col] = pd.to_numeric(data[old_col], errors="coerce").fillna(0.0)
+
     _check_columns(data, MARKET_REQUIRED_COLUMNS, path)
     for column in MARKET_OPTIONAL_COLUMNS:
         if column not in data.columns:

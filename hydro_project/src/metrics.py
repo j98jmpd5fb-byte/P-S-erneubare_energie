@@ -16,7 +16,45 @@ def calculate_metrics(results, plant=None):
     total_surplus_before = float(results.get("surplus_MW", 0.0).sum())
     total_surplus_after = float(results.get("surplus_after_storage_MW", 0.0).sum())
     import_reduction = float(results.get("import_reduction_MWh", 0.0).sum())
-    surplus_absorbed = float(results.get("surplus_absorbed_MWh", 0.0).sum())
+
+    # ============================================================
+    # Grid support metrics
+    # ============================================================
+
+    # Pumping during Swiss grid surplus hours
+    surplus_pump_mask = (
+        (results["action"] == "pump")
+        & (results["surplus_MW"] > 0)
+    )
+
+    deficit_generate_mask = (
+        (results["action"] == "generate")
+        & (results["import_MW"] > 0)
+    )
+
+    # Surplus absorbed is limited by pump energy and available export capacity
+    surplus_absorbed_MWh = (
+        results.loc[surplus_pump_mask, ["pump_MWh", "export_MW"]]
+        .min(axis=1)
+        .sum()
+    )
+
+    deficit_reduction_MWh = (
+        results.loc[deficit_generate_mask, ["generation_MWh", "import_MW"]]
+        .min(axis=1)
+        .sum()
+    )
+
+    renewable_surplus_pump_mask = (
+        surplus_pump_mask
+        & (results["renewable_fraction"] >= 0.5)
+    )
+
+    renewable_surplus_absorbed_MWh = (
+        results.loc[renewable_surplus_pump_mask, ["pump_MWh", "export_MW"]]
+        .min(axis=1)
+        .sum()
+    )
 
     metrics = {
         "total_revenue_EUR": total_revenue,
@@ -30,12 +68,12 @@ def calculate_metrics(results, plant=None):
         "final_storage_MWh": final_storage,
         "total_deficit_before_MWh": total_deficit_before,
         "total_deficit_after_MWh": total_deficit_after,
-        "deficit_reduction_MWh": max(0.0, total_deficit_before - total_deficit_after),
+        "deficit_reduction_MWh": deficit_reduction_MWh,
         "total_surplus_before_MWh": total_surplus_before,
         "total_surplus_after_MWh": total_surplus_after,
-        "surplus_absorbed_MWh": surplus_absorbed,
+        "surplus_absorbed_MWh": surplus_absorbed_MWh,
         "import_reduction_MWh": import_reduction,
-        "total_profit_EUR": total_profit,
+        "renewable_surplus_absorbed_MWh": renewable_surplus_absorbed_MWh,
     }
 
     if plant is not None and getattr(plant, "storage_capacity_MWh", None) and plant.storage_capacity_MWh > 0:
