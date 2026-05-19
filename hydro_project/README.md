@@ -50,9 +50,36 @@ hydro_project/
         metrics.py
         plots.py
     outputs/
+        core_plots/
+        operational_plots/
+        csv/
+        parameter_sweep/
     tests/
         test_simulation.py
+    parameter_sweep.py
 ```
+
+## Recent updates
+
+This version includes several new features and output improvements:
+
+- Simplified scenario plot and terminal labels:
+  - `Generation only`
+  - `Arbitrage`
+  - `Renew. conservative`
+  - `Renew. balanced`
+  - `Renew. aggressive`
+- Added terminal storage valuation to metrics, with a net storage value adjustment
+  that subtracts the value of initial stored water from `adjusted_total_profit_EUR`.
+- Added `initial_storage_value_EUR`, `final_storage_value_EUR`,
+  `terminal_storage_value_EUR`, and `adjusted_total_profit_EUR` to scenario metrics.
+- Added hourly `renewable_surplus_absorbed_MWh` to the simulation output so
+  monthly renewable absorption plots can be generated directly from scenario
+  results.
+- Reorganized outputs into dedicated subfolders under `outputs/` and
+  centralized summary CSV output under `outputs/csv/`.
+- Added additional comparison plots for adjusted total profit and storage-adjusted
+  profit versus renewable absorption.
 
 ## Data Needed Later
 
@@ -78,8 +105,9 @@ Run the simulation from inside the `hydro_project` folder:
 python main.py
 ```
 
-The script prints summary metrics, saves hourly results to
-`outputs/simulation_results.csv`, and saves plots in `outputs/`.
+The script prints per-scenario summary metrics to the terminal, saves hourly
+results to `outputs/<scenario>/simulation_results.csv`, and creates organized
+plots under `outputs/core_plots/` and `outputs/operational_plots/`.
 
 Run tests:
 
@@ -211,7 +239,7 @@ zeros):
 - `pump_MWh`, `generation_MWh`, `storage_MWh`
 - `cost_EUR`, `revenue_EUR`, `profit_EUR`
 - `deficit_after_storage_MW`, `surplus_after_storage_MW`
-- `import_reduction_MWh`, `surplus_absorbed_MWh`
+- `import_reduction_MWh`, `surplus_absorbed_MWh`, `renewable_surplus_absorbed_MWh`
 - `low_threshold`, `high_threshold` (thresholds used by price-based strategies)
 - `scenario` (scenario name)
 
@@ -221,18 +249,20 @@ post-processing.
 ## Aggregated metrics (columns in `metrics_summary.csv`)
 
 For each scenario the following aggregated metrics are computed and saved to
-`outputs/metrics_summary.csv`:
+`outputs/csv/metrics_summary.csv`:
 
 - `total_revenue_EUR`, `total_cost_EUR`, `total_profit_EUR` (economic)
+- `initial_storage_value_EUR`, `final_storage_value_EUR`,
+  `terminal_storage_value_EUR`, `adjusted_total_profit_EUR`
 - `total_pumped_MWh`, `total_generated_MWh`, `roundtrip_losses_MWh`
-- `pumping_hours`, `generation_hours`, `final_storage_MWh`
+- `pumping_hours`, `generation_hours`, `start_storage_MWh`, `final_storage_MWh`
 - `total_deficit_before_MWh`, `total_deficit_after_MWh`, `deficit_reduction_MWh`
 - `total_surplus_before_MWh`, `total_surplus_after_MWh`, `surplus_absorbed_MWh`
-- `import_reduction_MWh`
+- `import_reduction_MWh`, `renewable_surplus_absorbed_MWh`
 - `storage_cycles` (optional; computed when plant capacity provided)
 
-`main.py` collects these per-scenario metrics into `metrics_summary.csv` and
-also saves a comparison plot `outputs/scenario_comparison.png`.
+`main.py` collects these per-scenario metrics into `outputs/csv/metrics_summary.csv` and
+also saves a comparison plot `outputs/core_plots/scenario_comparison.png`.
 
 ## Input CSV formats and optional columns
 
@@ -281,11 +311,27 @@ and will raise a `ValueError` if any datetimes cannot be parsed.
 
 ## Outputs produced (files)
 
-- `outputs/<scenario>/simulation_results.csv` — hourly results for scenario
-- `outputs/<scenario>/*.png` — plots per scenario (prices, storage, actions,
+- `outputs/<scenario>/simulation_results.csv` — hourly results for each scenario
+- `outputs/<scenario>/*.png` — scenario-specific plots (prices, storage, actions,
   cumulative profit, monthly energy, etc.)
-- `outputs/metrics_summary.csv` — table with one row per scenario
-- `outputs/scenario_comparison.png` — bar chart comparing key metrics
+- `outputs/csv/metrics_summary.csv` — summary table with one row per scenario
+- `outputs/core_plots/scenario_comparison.png` — comparison chart of core metrics
+- `outputs/core_plots/core_adjusted_total_profit.png` — adjusted profit compare plot
+- `outputs/core_plots/relative_improvement_vs_generation_only.png`
+- `outputs/core_plots/storage_adjusted_profit_vs_renewable_absorption.png`
+- `outputs/operational_plots/monthly_renewable_surplus_absorbed_balanced.png`
+- `outputs/parameter_sweep/parameter_sweep_tradeoff.png` — optional sweep tradeoff plot
+
+### Plot files and meaning
+
+- `outputs/core_plots/scenario_comparison.png` — bar charts comparing core metrics across scenarios.
+- `outputs/core_plots/core_adjusted_total_profit.png` — adjusted total profit for each scenario, including terminal storage valuation.
+- `outputs/core_plots/relative_improvement_vs_generation_only.png` — relative profit improvement compared to the generation-only baseline.
+- `outputs/core_plots/storage_adjusted_profit_vs_renewable_absorption.png` — tradeoff plot of storage-adjusted profit vs renewable surplus absorbed.
+- `outputs/operational_plots/<scenario>/price_over_time.png` — hourly price series.
+- `outputs/operational_plots/<scenario>/storage_over_time.png` — storage state over time.
+- `outputs/operational_plots/<scenario>/actions_over_time.png` — hourly pump/generate/idle decisions.
+- `outputs/operational_plots/monthly_renewable_surplus_absorbed_balanced.png` — monthly aggregate renewable surplus absorbed for the balanced renewable strategy.
 
 ## How to extend
 
