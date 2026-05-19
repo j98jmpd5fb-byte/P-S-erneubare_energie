@@ -1,5 +1,4 @@
 import itertools
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +7,7 @@ from src.data_loader import load_market_data, load_plant_parameters
 from src.metrics import calculate_metrics
 from src.simulation import run_simulation
 from src.strategy import SCENARIO_STRATEGIES
+from src.plots import save_pareto_frontier_plot
 
 
 def get_parameter_grid():
@@ -16,20 +16,11 @@ def get_parameter_grid():
     Change these lists to tune the parameter sweep.
     """
     parameter_grid = {
-        # Minimum renewable surplus needed before pumping is considered
-        "min_surplus_mwh": [0.0, 100.0, 250.0],
-
-        # Renewable share required to classify surplus as renewable support
-        "min_renewable_fraction": [0.5, 0.7],
-
-        # How much extra surplus is required before pumping aggressively
-        "safety_margin": [1.00, 1.10, 1.25],
-
-        # Price quantiles for rolling arbitrage thresholds
-        "low_quantile": [0.20, 0.30],
-        "high_quantile": [0.70, 0.80],
-
-        # For now only test the realistic value we want to use finally
+        "min_surplus_mwh": [0.0],
+        "min_renewable_fraction": [0.3, 0.4, 0.5],
+        "safety_margin": [0.90, 0.95, 1.00],
+        "low_quantile": [0.20],
+        "high_quantile": [0.70, 0.75, 0.80, 0.85],
         "round_trip_efficiency": [0.75],
     }
 
@@ -42,8 +33,11 @@ def get_parameter_grid():
     return combinations
 
 
-def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path: Path):
+def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path):
     """Create a tradeoff scatter plot for the renewable parameter sweep."""
+
+    from pathlib import Path
+
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -52,6 +46,8 @@ def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path: Path):
     except ImportError:
         print("matplotlib is not installed; skipping tradeoff plot generation.")
         return
+
+    output_path = Path(output_path)
 
     if metrics_df.empty:
         print("No successful sweep results available for plotting.")
@@ -65,60 +61,91 @@ def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path: Path):
     if df.empty:
         print("No successful sweep results available for plotting.")
         return
+    
+    start_storage_MWh = 820040.0
+    storage_value_EUR_per_MWh = 100.0
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    if "storage_adjusted_profit_EUR" not in df.columns:
+        df["storage_adjusted_profit_EUR"] = (
+            df["total_profit_EUR"]
+            + (df["final_storage_MWh"] - start_storage_MWh)
+            * storage_value_EUR_per_MWh
+        )
 
-    # Normalize point sizes to a readable range
+    x_col = "renewable_surplus_absorbed_MWh"
+    y_col = "storage_adjusted_profit_EUR"
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+
+    # Point size = deficit reduction, normalized to readable marker sizes
     size_metric = df["deficit_reduction_MWh"].fillna(0)
 
     if size_metric.max() > size_metric.min():
-        sizes = 40 + 260 * (
+        sizes = 30 + 90 * (
             (size_metric - size_metric.min())
             / (size_metric.max() - size_metric.min())
         )
     else:
-        sizes = 100
+        sizes = pd.Series(90, index=df.index)
 
-    # Since round_trip_efficiency is constant, color by a parameter that actually varies
-    color_metric = df["safety_margin"]
+    color_metric = "safety_margin"
 
-    scatter = ax.scatter(
-        df["renewable_surplus_absorbed_MWh"],
-        df["total_profit_EUR"],
-        c=color_metric,
-        s=sizes,
-        cmap="viridis",
-        alpha=0.75,
-        edgecolor="black",
-        linewidth=0.4,
+    unique_high_q = sorted(df["high_quantile"].dropna().unique())
+    marker_cycle = ["o", "s", "^", "D", "X", "P"]
+
+    scatter = None
+
+    for idx, high_q in enumerate(unique_high_q):
+        subset = df[df["high_quantile"] == high_q]
+
+        if subset.empty:
+            continue
+
+        scatter = ax.scatter(
+            subset[x_col],
+            subset[y_col],
+            c=subset[color_metric],
+            s=sizes.loc[subset.index],
+            cmap="viridis",
+            alpha=0.70,
+            edgecolor="black",
+            linewidth=0.7,
+            marker=marker_cycle[idx % len(marker_cycle)],
+            label=f"high quantile = {high_q:.2f}",
+        )
+
+    if scatter is not None:
+        cbar = fig.colorbar(scatter, ax=ax)
+        cbar.set_label("Safety margin")
+
+    ax.legend(
+        title="Generation threshold",
+        loc="upper left",
+        bbox_to_anchor=(1.18, 1.0),
     )
 
-    cbar = fig.colorbar(scatter, ax=ax)
-    cbar.set_label("Safety margin")
+    ax.set_title("Renewable-support tradeoff: storage-adjusted profit vs renewable surplus absorbed")
+    ax.set_xlabel("Renewable surplus absorbed [million MWh]")
+    ax.set_ylabel("Storage-adjusted profit [million EUR]")
+    ax.set_xlim(
+        df["renewable_surplus_absorbed_MWh"].min() * 0.98,
+        df["renewable_surplus_absorbed_MWh"].max() * 1.18,
+    )
 
-    ax.set_title("Renewable-support tradeoff: profit vs renewable surplus absorbed")
-    ax.set_xlabel("Renewable surplus absorbed [MWh]")
-    ax.set_ylabel("Total profit [million EUR]")
 
-    # Format y-axis in million EUR
+    ax.xaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda x, _: f"{x / 1e6:.2f}")
+    )
     ax.yaxis.set_major_formatter(
         mticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
     )
 
     ax.grid(True, linestyle="--", alpha=0.3)
 
-    ax.annotate(
-        "Point size ~ deficit reduction",
-        xy=(0.05, 0.95),
-        xycoords="axes fraction",
-        fontsize=9,
-        ha="left",
-        va="top",
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "alpha": 0.8},
-    )
-
     fig.tight_layout()
-    fig.savefig(output_path, dpi=150)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -127,6 +154,11 @@ def run_parameter_sweep():
     data_dir = project_dir / "data"
     output_dir = project_dir / "outputs"
     output_dir.mkdir(exist_ok=True)
+
+    parameter_sweep_dir = output_dir / "parameter_sweep"
+    csv_dir = output_dir / "csv"
+    parameter_sweep_dir.mkdir(parents=True, exist_ok=True)
+    csv_dir.mkdir(parents=True, exist_ok=True)
 
     market_data = load_market_data(data_dir / "simulation_input_2025.csv")
     market_data["grid_surplus_MWh"] = (
@@ -138,7 +170,9 @@ def run_parameter_sweep():
         / market_data["total_production_MW_avg"].replace(0, pd.NA)
     ).fillna(0)
 
-    plant = load_plant_parameters(data_dir / "plant_parameters.csv")
+    # Do not reuse a single plant instance across runs — load a fresh plant per combination
+    # because `run_simulation` mutates `plant.storage_MWh` during the simulation.
+    # We'll load a new `HydroPlant` for each parameter combination below.
 
     strategy_name = "renewable_surplus_plus_rolling_price"
     strategy = SCENARIO_STRATEGIES[strategy_name]
@@ -147,7 +181,7 @@ def run_parameter_sweep():
     total_combinations = len(grid)
 
     sweep_rows = []
-    results_csv_path = output_dir / "renewable_parameter_sweep.csv"
+    results_csv_path = csv_dir / "renewable_parameter_sweep.csv"
 
     for index, params in enumerate(grid, start=1):
         combo_label = (
@@ -164,6 +198,8 @@ def run_parameter_sweep():
             "strategy_name": strategy_name,
             **params,
             "total_profit_EUR": None,
+            "terminal_storage_value_EUR": None,
+            "adjusted_total_profit_EUR": None,
             "total_pumped_MWh": None,
             "total_generated_MWh": None,
             "deficit_reduction_MWh": None,
@@ -174,18 +210,24 @@ def run_parameter_sweep():
         }
 
         try:
+            # create a fresh plant instance for this run so storage starts from the
+            # configured initial storage each time
+            plant_for_run = load_plant_parameters(data_dir / "plant_parameters.csv")
+
             results = run_simulation(
                 market_data=market_data,
-                plant=plant,
+                plant=plant_for_run,
                 strategy=strategy,
                 strategy_kwargs=params,
                 scenario=strategy_name,
             )
-            metrics = calculate_metrics(results, plant=plant)
+            metrics = calculate_metrics(results, plant=plant_for_run)
 
             row.update(
                 {
                     "total_profit_EUR": metrics.get("total_profit_EUR"),
+                    "terminal_storage_value_EUR": metrics.get("terminal_storage_value_EUR"),
+                    "adjusted_total_profit_EUR": metrics.get("adjusted_total_profit_EUR"),
                     "total_pumped_MWh": metrics.get("total_pumped_MWh"),
                     "total_generated_MWh": metrics.get("total_generated_MWh"),
                     "deficit_reduction_MWh": metrics.get("deficit_reduction_MWh"),
@@ -207,17 +249,32 @@ def run_parameter_sweep():
     sweep_df = pd.DataFrame(sweep_rows)
     sweep_df.to_csv(results_csv_path, index=False)
 
-    plot_path = output_dir / "renewable_tradeoff_plot.png"
+    plot_path = parameter_sweep_dir / "parameter_sweep_tradeoff.png"
     create_tradeoff_plot(sweep_df, plot_path)
     print(f"Saved parameter sweep CSV to {results_csv_path}")
     print(f"Saved tradeoff plot to {plot_path}")
 
 
 def main():
+    project_dir = Path(__file__).resolve().parent
+    output_dir = project_dir / "outputs"
+    parameter_sweep_dir = output_dir / "parameter_sweep"
+    csv_dir = output_dir / "csv"
+    parameter_sweep_dir.mkdir(parents=True, exist_ok=True)
+    csv_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run the sweep and save outputs into the organized outputs folder.
     # run_parameter_sweep()
-    sweep_df = pd.read_csv("outputs/renewable_parameter_sweep.csv")
-    plot_path = r"C:\Users\flori\repos\P-S-erneubare_energie\hydro_project\outputs\renewable_tradeoff_plot.png"
+
+    # If you want to regenerate only the plot from existing CSV, uncomment the lines below:
+    sweep_df = pd.read_csv(csv_dir / "renewable_parameter_sweep.csv")
+    plot_path = parameter_sweep_dir / "parameter_sweep_tradeoff.png"
     create_tradeoff_plot(sweep_df, plot_path)
+
+    save_pareto_frontier_plot(
+        sweep_df,
+        Path("outputs") / "parameter_sweep" / "pareto_frontier.png",
+    )
 
 
 if __name__ == "__main__":

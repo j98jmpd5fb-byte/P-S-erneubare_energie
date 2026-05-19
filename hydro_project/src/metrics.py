@@ -6,10 +6,23 @@ def calculate_metrics(results, plant=None):
     total_cost = float(results.get("cost_EUR", 0.0).sum())
     total_revenue = float(results.get("revenue_EUR", 0.0).sum())
 
-    start_storage = float(results["storage_MWh"].iloc[0]) if len(results) else 0.0
-    final_storage = float(results["storage_MWh"].iloc[-1]) if len(results) else 0.0
-    storage_change = final_storage - start_storage
-    roundtrip_losses = max(0.0, total_pumped - total_generated - storage_change)
+    start_storage = float(results["storage_MWh"].iloc[0]) if "storage_MWh" in results.columns and len(results) else 0.0
+    final_storage = float(results["storage_MWh"].iloc[-1]) if "storage_MWh" in results.columns and len(results) else 0.0
+    # roundtrip losses = pumped - generated - net change in storage
+    roundtrip_losses = max(0.0, total_pumped - total_generated - (final_storage - start_storage))
+
+    # Finite-horizon simulations can undervalue strategies that preserve stored energy
+    # at the simulation end, because that energy still has economic value in future hours.
+    # We value stored energy at a fixed proxy price (EUR per MWh) and account for the
+    # net change in stored energy between start and end. This removes the value of
+    # initial storage from the adjusted profit so strategies are compared on marginal
+    # economic performance over the simulation horizon.
+    storage_value_per_MWh = 100.0
+    initial_storage_value_EUR = start_storage * storage_value_per_MWh
+    final_storage_value_EUR = final_storage * storage_value_per_MWh
+    # Terminal storage value is the net change in storage value over the horizon.
+    terminal_storage_value = (final_storage - start_storage) * storage_value_per_MWh
+    adjusted_total_profit = total_profit + terminal_storage_value
 
     total_deficit_before = float(results.get("deficit_MW", 0.0).sum())
     total_deficit_after = float(results.get("deficit_after_storage_MW", 0.0).sum())
@@ -60,11 +73,16 @@ def calculate_metrics(results, plant=None):
         "total_revenue_EUR": total_revenue,
         "total_cost_EUR": total_cost,
         "total_profit_EUR": total_profit,
+        "initial_storage_value_EUR": initial_storage_value_EUR,
+        "final_storage_value_EUR": final_storage_value_EUR,
+        "terminal_storage_value_EUR": terminal_storage_value,
+        "adjusted_total_profit_EUR": adjusted_total_profit,
         "total_pumped_MWh": total_pumped,
         "total_generated_MWh": total_generated,
         "roundtrip_losses_MWh": roundtrip_losses,
         "pumping_hours": int((results.get("pump_MWh", 0.0) > 0).sum()),
         "generation_hours": int((results.get("generation_MWh", 0.0) > 0).sum()),
+        "start_storage_MWh": start_storage,
         "final_storage_MWh": final_storage,
         "total_deficit_before_MWh": total_deficit_before,
         "total_deficit_after_MWh": total_deficit_after,

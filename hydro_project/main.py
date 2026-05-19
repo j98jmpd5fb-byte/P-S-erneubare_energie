@@ -10,6 +10,14 @@ from src.plots import (
     save_scenario_comparison_plot,
     save_strategy_week_comparison_plot,
     find_most_volatile_week,
+    save_core_kpi_bar_plots,
+    save_profit_vs_renewable_absorption_plot,
+    save_deficit_vs_renewable_absorption_plot,
+    save_adjusted_profit_plot,
+    save_relative_improvement_plot,
+    save_storage_adjusted_profit_vs_renewable_absorption_plot,
+    save_monthly_renewable_surplus_absorbed_plot,
+    save_deficit_before_after_week_plot,
 )
 from src.simulation import run_simulation
 from src.strategy import SCENARIO_STRATEGIES, automatic_price_thresholds
@@ -20,6 +28,14 @@ def main(dataset="simulation_input_2025.csv"):
     data_dir = project_dir / "data"
     output_dir = project_dir / "outputs"
     output_dir.mkdir(exist_ok=True)
+
+    core_dir = output_dir / "core_plots"
+    operational_dir = output_dir / "operational_plots"
+    csv_dir = output_dir / "csv"
+
+    core_dir.mkdir(parents=True, exist_ok=True)
+    operational_dir.mkdir(parents=True, exist_ok=True)
+    csv_dir.mkdir(parents=True, exist_ok=True)
 
     plant = load_plant_parameters(data_dir / "plant_parameters.csv")
     market_data = load_market_data(data_dir / dataset)
@@ -106,12 +122,12 @@ def main(dataset="simulation_input_2025.csv"):
         #     },
         # },
         "generation_only_rolling_24h": {
-            "title": "Current hydropower plant, no pumping",
+            "title": "Generation only",
             "strategy": SCENARIO_STRATEGIES["generation_only_rolling_24h"],
             "strategy_kwargs": {},
         },
         "rolling_24h_price_arbitrage_max": {
-            "title": "Pumped Hydro Simulation, max economic benefit",
+            "title": "Arbitrage",
             "strategy": SCENARIO_STRATEGIES["rolling_24h_price_arbitrage"],
             "strategy_kwargs": {
                 "low_quantile": 0.30,
@@ -121,42 +137,39 @@ def main(dataset="simulation_input_2025.csv"):
             },
         },
         "renewable_support_conservative": {
-            "title": "Renewable surplus support - conservative",
+            "title": "Renew. conservative",
             "strategy": SCENARIO_STRATEGIES["renewable_surplus_plus_rolling_price"],
             "strategy_kwargs": {
-                "min_surplus_mwh": 0,
+                "min_surplus_mwh": 0.0,
                 "min_renewable_fraction": 0.5,
                 "low_quantile": 0.20,
-                "high_quantile": 0.80,
-                "round_trip_efficiency": 0.75,
-                "safety_margin": 1.10,
-                "support_margin": 1.00,
-            },
-        },
-        "renewable_support_balanced": {
-            "title": "Renewable surplus support - balanced",
-            "strategy": SCENARIO_STRATEGIES["renewable_surplus_plus_rolling_price"],
-            "strategy_kwargs": {
-                "min_surplus_mwh": 0,
-                "min_renewable_fraction": 0.5,
-                "low_quantile": 0.25,
-                "high_quantile": 0.75,
-                "round_trip_efficiency": 0.75,
-                "safety_margin": 1.05,
-                "support_margin": 0.95,
-            },
-        },
-        "renewable_support_aggressive": {
-            "title": "Renewable surplus support - aggressive",
-            "strategy": SCENARIO_STRATEGIES["renewable_surplus_plus_rolling_price"],
-            "strategy_kwargs": {
-                "min_surplus_mwh": 0,
-                "min_renewable_fraction": 0.5,
-                "low_quantile": 0.30,
                 "high_quantile": 0.70,
                 "round_trip_efficiency": 0.75,
                 "safety_margin": 1.00,
-                "support_margin": 0.85,
+            },
+        },
+        "renewable_support_balanced": {
+            "title": "Renew. balanced",
+            "strategy": SCENARIO_STRATEGIES["renewable_surplus_plus_rolling_price"],
+            "strategy_kwargs": {
+                "min_surplus_mwh": 0.0,
+                "min_renewable_fraction": 0.4,
+                "low_quantile": 0.20,
+                "high_quantile": 0.80,
+                "round_trip_efficiency": 0.75,
+                "safety_margin": 0.95,
+            },
+        },
+        "renewable_support_aggressive": {
+            "title": "Renew. aggressive",
+            "strategy": SCENARIO_STRATEGIES["renewable_surplus_plus_rolling_price"],
+            "strategy_kwargs": {
+                "min_surplus_mwh": 0.0,
+                "min_renewable_fraction": 0.3,
+                "low_quantile": 0.20,
+                "high_quantile": 0.85,
+                "round_trip_efficiency": 0.75,
+                "safety_margin": 0.90,
             },
         },
         # "import_reduction": {
@@ -212,8 +225,18 @@ def main(dataset="simulation_input_2025.csv"):
         metrics["strategy"] = scenario["title"]
         summary_rows.append(metrics)
 
+        print(f"Summary for {scenario_name} ({scenario['title']}):")
+        print(
+            pd.DataFrame([{
+                "total_profit_EUR": metrics["total_profit_EUR"],
+                "terminal_storage_value_EUR": metrics["terminal_storage_value_EUR"],
+                "adjusted_total_profit_EUR": metrics["adjusted_total_profit_EUR"],
+                "final_storage_MWh": metrics["final_storage_MWh"],
+            }]).to_string(index=False, float_format="{:.2f}".format)
+        )
+
         results.to_csv(scenario_dir / "simulation_results.csv", index=False)
-        save_all_plots(results, scenario_dir)
+        save_all_plots(results, operational_dir / scenario_name)
 
     metrics_summary = pd.DataFrame(summary_rows)
 
@@ -242,8 +265,8 @@ def main(dataset="simulation_input_2025.csv"):
     # ]])
 
 
-    metrics_summary.to_csv(output_dir / "metrics_summary.csv", index=False)
-    save_scenario_comparison_plot(metrics_summary, output_dir)
+    metrics_summary.to_csv(csv_dir / "metrics_summary.csv", index=False)
+    save_scenario_comparison_plot(metrics_summary, core_dir)
     volatile_week = find_most_volatile_week(
         scenario_results["generation_only_rolling_24h"]
     )
@@ -262,9 +285,51 @@ def main(dataset="simulation_input_2025.csv"):
         save_strategy_week_comparison_plot(
             generation_only_results=scenario_results["generation_only_rolling_24h"],
             pumped_storage_results=scenario_results["rolling_24h_price_arbitrage_max"],
-            output_dir=output_dir,
+            output_dir=operational_dir / "week_comparisons",
             start_date=start_date,
         )
+        save_deficit_before_after_week_plot(
+            scenario_results["generation_only_rolling_24h"],
+            scenario_results["renewable_support_balanced"],
+            Path("outputs")
+            / "operational_plots"
+            / "deficit_before_after"
+            / f"deficit_before_after_balanced_{start_date}.png",
+            start_date=start_date,
+        )
+
+    save_core_kpi_bar_plots(
+        metrics_summary,
+        core_dir,
+    )
+
+    save_profit_vs_renewable_absorption_plot(
+        metrics_summary,
+        core_dir / "profit_vs_renewable_absorption.png",
+    )
+
+    save_deficit_vs_renewable_absorption_plot(
+        metrics_summary,
+        core_dir / "deficit_vs_renewable_absorption.png",
+    )
+
+    save_adjusted_profit_plot(metrics_summary, core_dir)
+
+    save_relative_improvement_plot(
+        metrics_summary,
+        Path("outputs") / "core_plots" / "relative_improvement_vs_generation_only.png",
+    )
+
+    save_storage_adjusted_profit_vs_renewable_absorption_plot(
+        metrics_summary,
+        Path("outputs") / "core_plots" / "storage_adjusted_profit_vs_renewable_absorption.png",
+    )
+
+    save_monthly_renewable_surplus_absorbed_plot(
+        scenario_results["renewable_support_balanced"],
+        Path("outputs") / "operational_plots" / "monthly_renewable_surplus_absorbed_balanced.png",
+    )
+
 
     print(f"Plant: {plant.name}")
     print("\nScenario comparison summary")
@@ -272,11 +337,14 @@ def main(dataset="simulation_input_2025.csv"):
         "scenario",
         "strategy",
         "total_profit_EUR",
+        "terminal_storage_value_EUR",
+        "adjusted_total_profit_EUR",
         "total_pumped_MWh",
         "total_generated_MWh",
         "deficit_reduction_MWh",
         "surplus_absorbed_MWh",
         "renewable_surplus_absorbed_MWh",
+        "start_storage_MWh",
         "final_storage_MWh",
     ]
     print(metrics_summary[display_columns].to_string(index=False, float_format="{:.2f}".format))

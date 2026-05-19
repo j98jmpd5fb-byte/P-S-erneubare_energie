@@ -83,6 +83,11 @@ def run_simulation(
         surplus_after_storage_MW = max(surplus_MW - pump_MWh, 0.0)
         import_reduction_MWh = min(generation_MWh, import_MW)
         surplus_absorbed_MWh = min(pump_MWh, export_MW)
+        renewable_surplus_absorbed_MWh = (
+            min(pump_MWh, export_MW)
+            if action == "pump" and float(row.get("renewable_fraction", 0.0)) >= 0.5
+            else 0.0
+        )
 
         natural_inflow_MWh = float(row.get("natural_inflow_MWh", 0.0))
         stored_inflow_MWh, spilled_inflow_MWh = plant.add_inflow(natural_inflow_MWh)
@@ -109,6 +114,7 @@ def run_simulation(
                 "surplus_after_storage_MW": surplus_after_storage_MW,
                 "import_reduction_MWh": import_reduction_MWh,
                 "surplus_absorbed_MWh": surplus_absorbed_MWh,
+                "renewable_surplus_absorbed_MWh": renewable_surplus_absorbed_MWh,
                 "low_threshold": low_threshold,
                 "high_threshold": high_threshold,
                 "scenario": scenario,
