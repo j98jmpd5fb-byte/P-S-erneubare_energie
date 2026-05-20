@@ -271,10 +271,10 @@ def main():
     plot_path = parameter_sweep_dir / "parameter_sweep_tradeoff.png"
     create_tradeoff_plot(sweep_df, plot_path)
 
-    save_pareto_frontier_plot(
-        sweep_df,
-        Path("outputs") / "parameter_sweep" / "pareto_frontier.png",
-    )
+    # save_pareto_frontier_plot(
+    #     sweep_df,
+    #     Path("outputs") / "parameter_sweep" / "pareto_frontier.png",
+    # )
 
 
 if __name__ == "__main__":

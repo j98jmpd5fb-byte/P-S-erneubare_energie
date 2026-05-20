@@ -40,7 +40,22 @@ def main(dataset="simulation_input_2025.csv"):
     plant = load_plant_parameters(data_dir / "plant_parameters.csv")
     market_data = load_market_data(data_dir / dataset)
 
-    market_data = load_market_data(data_dir / dataset)
+    market_data["month"] = market_data["datetime"].dt.month
+
+    monthly_avg_price = market_data.groupby("month")["price_EUR_per_MWh"].mean()
+    year_avg_price = market_data["price_EUR_per_MWh"].mean()
+
+    market_data["monthly_price_factor"] = (
+        market_data["month"].map(monthly_avg_price) / year_avg_price
+    )
+
+    # print("\nMonthly price factors:")
+    # print(
+    #     market_data.groupby("month")["monthly_price_factor"]
+    #     .first()
+    #     .round(3)
+    # )
+
 
     market_data["grid_surplus_MWh"] = (
         market_data["total_production_MWh"]
@@ -124,7 +139,9 @@ def main(dataset="simulation_input_2025.csv"):
         "generation_only_rolling_24h": {
             "title": "Generation only",
             "strategy": SCENARIO_STRATEGIES["generation_only_rolling_24h"],
-            "strategy_kwargs": {},
+            "strategy_kwargs": {
+                "seasonal_strength": 0.5,
+            },
         },
         "rolling_24h_price_arbitrage_max": {
             "title": "Arbitrage",
@@ -134,6 +151,7 @@ def main(dataset="simulation_input_2025.csv"):
                 "high_quantile": 0.85,
                 "round_trip_efficiency": 0.75,
                 "safety_margin": 1.15,
+                "seasonal_strength": 0.5,
             },
         },
         "renewable_support_conservative": {
@@ -146,6 +164,7 @@ def main(dataset="simulation_input_2025.csv"):
                 "high_quantile": 0.70,
                 "round_trip_efficiency": 0.75,
                 "safety_margin": 1.00,
+                "seasonal_strength": 0.5,
             },
         },
         "renewable_support_balanced": {
@@ -158,6 +177,7 @@ def main(dataset="simulation_input_2025.csv"):
                 "high_quantile": 0.80,
                 "round_trip_efficiency": 0.75,
                 "safety_margin": 0.95,
+                "seasonal_strength": 0.5,
             },
         },
         "renewable_support_aggressive": {
@@ -170,6 +190,7 @@ def main(dataset="simulation_input_2025.csv"):
                 "high_quantile": 0.85,
                 "round_trip_efficiency": 0.75,
                 "safety_margin": 0.90,
+                "seasonal_strength": 0.5,
             },
         },
         # "import_reduction": {

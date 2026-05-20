@@ -52,6 +52,8 @@ def run_simulation(
         action = decision.get("action", "idle")
         low_threshold = decision.get("low_threshold", np.nan)
         high_threshold = decision.get("high_threshold", np.nan)
+        seasonal_high_threshold = decision.get("seasonal_high_threshold", np.nan)
+        monthly_price_factor = decision.get("monthly_price_factor", np.nan)
 
         current_price = float(row["price_EUR_per_MWh"])
         load_MW = float(row.get("load_MW", 0.0))
@@ -117,6 +119,9 @@ def run_simulation(
                 "renewable_surplus_absorbed_MWh": renewable_surplus_absorbed_MWh,
                 "low_threshold": low_threshold,
                 "high_threshold": high_threshold,
+                "seasonal_high_threshold": seasonal_high_threshold,
+                "monthly_price_factor": monthly_price_factor,
+                "current_price": decision.get("current_price", current_price),
                 "scenario": scenario,
                 "natural_inflow_MWh": natural_inflow_MWh,
                 "stored_inflow_MWh": stored_inflow_MWh,

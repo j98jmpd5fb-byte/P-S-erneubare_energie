@@ -45,6 +45,11 @@ def threshold_strategy(price, low_price_threshold, high_price_threshold):
         return "generate"
     return "idle"
 
+def _seasonal_generation_threshold(high_threshold, current_row, seasonal_strength):
+    monthly_price_factor = float(current_row.get("monthly_price_factor", 1.0))
+    seasonal_adjustment = monthly_price_factor ** seasonal_strength
+    seasonal_high_threshold = high_threshold / seasonal_adjustment
+    return monthly_price_factor, seasonal_high_threshold
 
 def price_arbitrage_strategy(current_row, future_window=None, global_low=None, global_high=None, **kwargs):
     if global_low is None or global_high is None:
@@ -61,7 +66,7 @@ def price_arbitrage_strategy(current_row, future_window=None, global_low=None, g
     }
 
 def generation_only_rolling_24h_strategy(current_row, future_window=None, **kwargs):
-    """Hydropower without pumping: generate during high-price hours or when storage is nearly full."""
+    """Hydropower without pumping: generate during high-price hours, but consider seasonal water value."""
 
     prices = future_window["price_EUR_per_MWh"] if future_window is not None else []
     _, high_threshold = _window_thresholds(prices)
@@ -72,13 +77,23 @@ def generation_only_rolling_24h_strategy(current_row, future_window=None, **kwar
 
     current_price = float(current_row["price_EUR_per_MWh"])
     storage_fraction = float(current_row.get("storage_fraction", 0.5))
+    seasonal_strength = kwargs.get("seasonal_strength", 0.4)
+    monthly_price_factor, seasonal_high_threshold = _seasonal_generation_threshold(
+        high_threshold,
+        current_row,
+        seasonal_strength,
+    )
 
     very_high_storage_fraction = kwargs.get("very_high_storage_fraction", 0.95)
 
-    if current_price >= high_threshold:
+    attractive_to_generate = current_price >= seasonal_high_threshold
+
+    if attractive_to_generate:
         action = "generate"
+
     elif storage_fraction >= very_high_storage_fraction:
         action = "generate"
+
     else:
         action = "idle"
 
@@ -86,8 +101,10 @@ def generation_only_rolling_24h_strategy(current_row, future_window=None, **kwar
         "action": action,
         "low_threshold": np.nan,
         "high_threshold": high_threshold,
+        "seasonal_high_threshold": seasonal_high_threshold,
+        "monthly_price_factor": monthly_price_factor,
+        "current_price": current_price,
     }
-
 
 def rolling_24h_price_arbitrage_strategy(current_row, future_window=None, **kwargs):
     prices = future_window["price_EUR_per_MWh"] if future_window is not None else []
@@ -97,18 +114,30 @@ def rolling_24h_price_arbitrage_strategy(current_row, future_window=None, **kwar
     round_trip_efficiency = kwargs.get("round_trip_efficiency", 0.8)
     safety_margin = kwargs.get("safety_margin", 1.05)
 
+    very_high_storage_fraction = kwargs.get("very_high_storage_fraction", 0.97)
+    seasonal_strength = kwargs.get("seasonal_strength", 0.7)
+
     current_price = float(current_row["price_EUR_per_MWh"])
     storage_fraction = float(current_row.get("storage_fraction", 0.5))
+    monthly_price_factor = float(current_row.get("monthly_price_factor", 1.0))
 
     if prices is None or len(prices) == 0:
         return {
             "action": "idle",
             "low_threshold": current_price,
             "high_threshold": current_price,
+            "seasonal_high_threshold": current_price,
+            "monthly_price_factor": monthly_price_factor,
+            "current_price": current_price,
         }
 
     low_threshold = prices.quantile(low_quantile)
     high_threshold = prices.quantile(high_quantile)
+    monthly_price_factor, seasonal_high_threshold = _seasonal_generation_threshold(
+        high_threshold,
+        current_row,
+        seasonal_strength,
+    )
 
     required_future_price = (
         current_price / round_trip_efficiency
@@ -119,7 +148,7 @@ def rolling_24h_price_arbitrage_strategy(current_row, future_window=None, **kwar
         and high_threshold > required_future_price
     )
 
-    attractive_to_generate = current_price >= high_threshold
+    attractive_to_generate = current_price >= seasonal_high_threshold
 
     if profitable_to_pump and storage_fraction <= 0.90:
         action = "pump"
@@ -130,15 +159,18 @@ def rolling_24h_price_arbitrage_strategy(current_row, future_window=None, **kwar
     else:
         action = "idle"
 
-    # Emergency rule: if storage is almost full, generate to avoid wasting inflow/storage
-    if storage_fraction > 0.97:
+    # Emergency rule: if storage is almost full, generate anyway
+    if storage_fraction > very_high_storage_fraction:
         action = "generate"
 
     return {
         "action": action,
         "low_threshold": low_threshold,
         "high_threshold": high_threshold,
+        "seasonal_high_threshold": seasonal_high_threshold,
         "required_future_price": required_future_price,
+        "monthly_price_factor": monthly_price_factor,
+        "current_price": current_price,
     }
 
 
@@ -175,7 +207,11 @@ def renewable_surplus_plus_rolling_price_strategy(current_row, future_window=Non
             return {
                 "action": "pump",
                 "support_pump": True,
+                "low_threshold": np.nan,
                 "high_threshold": high_threshold,
+                "seasonal_high_threshold": np.nan,
+                "monthly_price_factor": float(current_row.get("monthly_price_factor", 1.0)),
+                "current_price": current_price,
                 "required_future_price": required_future_price,
             }
 

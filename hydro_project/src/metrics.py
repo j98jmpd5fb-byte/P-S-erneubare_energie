@@ -1,3 +1,20 @@
+def calculate_terminal_storage_value(
+    results,
+    terminal_storage_price_EUR_per_MWh=None,
+):
+    start_storage = results["storage_MWh"].iloc[0]
+    final_storage = results["storage_MWh"].iloc[-1]
+
+    if terminal_storage_price_EUR_per_MWh is None:
+        terminal_storage_price_EUR_per_MWh = results["price_EUR_per_MWh"].quantile(0.75)
+
+    # print(f"terminal_value = {terminal_storage_price_EUR_per_MWh}")
+
+    return terminal_storage_price_EUR_per_MWh
+
+
+
+
 def calculate_metrics(results, plant=None):
     """Calculate economic, storage, and grid-balancing metrics."""
     total_pumped = float(results.get("pump_MWh", 0.0).sum())
@@ -17,11 +34,16 @@ def calculate_metrics(results, plant=None):
     # net change in stored energy between start and end. This removes the value of
     # initial storage from the adjusted profit so strategies are compared on marginal
     # economic performance over the simulation horizon.
-    storage_value_per_MWh = 100.0
-    initial_storage_value_EUR = start_storage * storage_value_per_MWh
-    final_storage_value_EUR = final_storage * storage_value_per_MWh
-    # Terminal storage value is the net change in storage value over the horizon.
-    terminal_storage_value = (final_storage - start_storage) * storage_value_per_MWh
+
+    terminal_storage_price_per_MWh = calculate_terminal_storage_value(results)
+
+    initial_storage_value_EUR = start_storage * terminal_storage_price_per_MWh
+    final_storage_value_EUR = final_storage * terminal_storage_price_per_MWh
+
+    terminal_storage_value = (
+        final_storage - start_storage
+    ) * terminal_storage_price_per_MWh
+
     adjusted_total_profit = total_profit + terminal_storage_value
 
     total_deficit_before = float(results.get("deficit_MW", 0.0).sum())
@@ -92,6 +114,7 @@ def calculate_metrics(results, plant=None):
         "surplus_absorbed_MWh": surplus_absorbed_MWh,
         "import_reduction_MWh": import_reduction,
         "renewable_surplus_absorbed_MWh": renewable_surplus_absorbed_MWh,
+        "terminal_storage_price_per_MWh": terminal_storage_price_per_MWh,
     }
 
     if plant is not None and getattr(plant, "storage_capacity_MWh", None) and plant.storage_capacity_MWh > 0:
