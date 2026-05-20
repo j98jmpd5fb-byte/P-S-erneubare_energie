@@ -1,7 +1,7 @@
 import pandas as pd
 
 from src.plant import HydroPlant
-from src.simulation import run_simulation
+from src.simulation import run_dispatch_strategy, run_simulation
 
 
 def make_test_plant():
@@ -96,3 +96,41 @@ def test_simulation_returns_expected_columns():
         "load_MW",
     ]
     assert list(results.columns) == expected_columns
+
+
+def test_dispatcher_rejects_invalid_strategy():
+    plant = make_test_plant()
+    try:
+        run_dispatch_strategy("not_a_strategy", make_market_data([10]), plant)
+    except ValueError as error:
+        assert "Allowed values" in str(error)
+    else:
+        raise AssertionError("Invalid strategy should raise ValueError.")
+
+
+def test_seasonal_day_ahead_can_release_seasonal_reserve_for_strong_peaks():
+    plant = HydroPlant(
+        name="Seasonal plant",
+        storage_capacity_MWh=1000,
+        turbine_power_MW=100,
+        pump_power_MW=100,
+        roundtrip_efficiency=0.8,
+        initial_storage_MWh=700,
+    )
+    market_data = make_market_data([10, 20, 30, 40, 100, 110, 120, 130])
+    historical_data = market_data.copy()
+
+    results = run_dispatch_strategy(
+        "seasonal_day_ahead",
+        market_data,
+        plant,
+        previous_year_market_data=historical_data,
+        cheap_percentile=25,
+        expensive_percentile=75,
+        min_reservoir_low_value_month=0.60,
+        min_reservoir_high_value_month=0.60,
+        top_price_fraction_for_water_value=0.20,
+    )
+
+    assert results["storage_MWh"].min() >= plant.min_storage_MWh
+    assert results["generation_MWh"].sum() > 0

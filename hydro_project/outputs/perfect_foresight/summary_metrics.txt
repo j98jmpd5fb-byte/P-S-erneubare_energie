@@ -1,0 +1,9 @@
+total_revenue_EUR: 323,248,532.93
+total_cost_EUR: 100,244,736.00
+total_profit_EUR: 223,003,796.93
+total_pumped_energy_MWh: 1,971,000.00
+total_generated_energy_MWh: 2,256,938.00
+pumping_hours: 2190
+generation_hours: 1140
+final_storage_MWh: 159,572.00
+approximate_import_reduction_MWh: 2,103,679.62
