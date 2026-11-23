@@ -77,7 +77,7 @@ def generation_only_rolling_24h_strategy(current_row, future_window=None, **kwar
 
     current_price = float(current_row["price_EUR_per_MWh"])
     storage_fraction = float(current_row.get("storage_fraction", 0.5))
-    seasonal_strength = kwargs.get("seasonal_strength", 0.4)
+    seasonal_strength = kwargs.get("seasonal_strength", 0.5)
     monthly_price_factor, seasonal_high_threshold = _seasonal_generation_threshold(
         high_threshold,
         current_row,

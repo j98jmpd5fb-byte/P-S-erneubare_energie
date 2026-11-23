@@ -7,7 +7,7 @@ from src.data_loader import load_market_data, load_plant_parameters
 from src.metrics import calculate_metrics
 from src.simulation import run_simulation
 from src.strategy import SCENARIO_STRATEGIES
-from src.plots import save_pareto_frontier_plot
+from src.plots import POSTER_DPI, save_pareto_frontier_plot
 
 
 def get_parameter_grid():
@@ -17,11 +17,12 @@ def get_parameter_grid():
     """
     parameter_grid = {
         "min_surplus_mwh": [0.0],
-        "min_renewable_fraction": [0.3, 0.4, 0.5],
-        "safety_margin": [0.90, 0.95, 1.00],
+        "min_renewable_fraction": [0.5],
+        "safety_margin": [0.85, 0.95, 1.05],
         "low_quantile": [0.20],
-        "high_quantile": [0.70, 0.75, 0.80, 0.85],
+        "high_quantile": [0.80, 0.85, 0.90],
         "round_trip_efficiency": [0.75],
+        "seasonal_strength": [0.3, 0.4, 0.5, 0.6],
     }
 
     keys = list(parameter_grid.keys())
@@ -43,6 +44,7 @@ def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.ticker as mticker
+        import matplotlib.colors as mcolors
     except ImportError:
         print("matplotlib is not installed; skipping tradeoff plot generation.")
         return
@@ -62,33 +64,44 @@ def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path):
         print("No successful sweep results available for plotting.")
         return
     
-    start_storage_MWh = 820040.0
-    storage_value_EUR_per_MWh = 100.0
-
-    if "storage_adjusted_profit_EUR" not in df.columns:
-        df["storage_adjusted_profit_EUR"] = (
-            df["total_profit_EUR"]
-            + (df["final_storage_MWh"] - start_storage_MWh)
-            * storage_value_EUR_per_MWh
-        )
-
     x_col = "renewable_surplus_absorbed_MWh"
-    y_col = "storage_adjusted_profit_EUR"
+    y_col = "adjusted_total_profit_EUR"
 
-    fig, ax = plt.subplots(figsize=(11, 6))
+    if y_col not in df.columns:
+        print(f"Column '{y_col}' missing; cannot create tradeoff plot.")
+        return
 
-    # Point size = deficit reduction, normalized to readable marker sizes
-    size_metric = df["deficit_reduction_MWh"].fillna(0)
+    fig, ax = plt.subplots(figsize=(12.5, 7.2), constrained_layout=True)
 
-    if size_metric.max() > size_metric.min():
-        sizes = 30 + 90 * (
-            (size_metric - size_metric.min())
-            / (size_metric.max() - size_metric.min())
+    # Point size = pumping-based deficit reduction, normalized to readable marker sizes.
+    size_metric_col = (
+        "pumping_based_deficit_reduction_MWh"
+        if "pumping_based_deficit_reduction_MWh" in df.columns
+        else "deficit_reduction_MWh"
+    )
+    size_metric = df[size_metric_col].fillna(0)
+    color_metric_col = (
+        "seasonal_strength"
+        if "seasonal_strength" in df.columns and df["seasonal_strength"].nunique(dropna=True) > 1
+        else "safety_margin"
+    )
+    color_values = df[color_metric_col].dropna()
+    color_norm = (
+        mcolors.Normalize(vmin=color_values.min(), vmax=color_values.max())
+        if not color_values.empty and color_values.max() > color_values.min()
+        else None
+    )
+
+    # Point size = pumping-based deficit reduction.
+    size_values = size_metric
+
+    if size_values.max() > size_values.min():
+        sizes = 70 + 180 * (
+            (size_values - size_values.min())
+            / (size_values.max() - size_values.min())
         )
     else:
-        sizes = pd.Series(90, index=df.index)
-
-    color_metric = "safety_margin"
+        sizes = pd.Series(140, index=df.index)
 
     unique_high_q = sorted(df["high_quantile"].dropna().unique())
     marker_cycle = ["o", "s", "^", "D", "X", "P"]
@@ -102,50 +115,44 @@ def create_tradeoff_plot(metrics_df: pd.DataFrame, output_path):
             continue
 
         scatter = ax.scatter(
-            subset[x_col],
-            subset[y_col],
-            c=subset[color_metric],
+            subset[x_col] / 1e3,
+            subset[y_col] / 1e6,
+            c=subset[color_metric_col],
             s=sizes.loc[subset.index],
             cmap="viridis",
-            alpha=0.70,
+            norm=color_norm,
+            alpha=0.75,
             edgecolor="black",
-            linewidth=0.7,
+            linewidth=0.8,
             marker=marker_cycle[idx % len(marker_cycle)],
             label=f"high quantile = {high_q:.2f}",
         )
 
     if scatter is not None:
         cbar = fig.colorbar(scatter, ax=ax)
-        cbar.set_label("Safety margin")
+        cbar.set_label(color_metric_col.replace("_", " ").title())
 
     ax.legend(
         title="Generation threshold",
         loc="upper left",
         bbox_to_anchor=(1.18, 1.0),
+        frameon=False,
     )
 
-    ax.set_title("Renewable-support tradeoff: storage-adjusted profit vs renewable surplus absorbed")
-    ax.set_xlabel("Renewable surplus absorbed [million MWh]")
-    ax.set_ylabel("Storage-adjusted profit [million EUR]")
+    ax.set_title("Renewable-support tradeoff")
+    ax.set_xlabel("Renewable surplus absorbed [GWh]")
+    ax.set_ylabel("Profit [million EUR]")
     ax.set_xlim(
-        df["renewable_surplus_absorbed_MWh"].min() * 0.98,
-        df["renewable_surplus_absorbed_MWh"].max() * 1.18,
+        (df["renewable_surplus_absorbed_MWh"].min() / 1e3) * 0.98,
+        (df["renewable_surplus_absorbed_MWh"].max() / 1e3) * 1.18,
     )
 
 
-    ax.xaxis.set_major_formatter(
-        mticker.FuncFormatter(lambda x, _: f"{x / 1e6:.2f}")
-    )
-    ax.yaxis.set_major_formatter(
-        mticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
-    )
-
-    ax.grid(True, linestyle="--", alpha=0.3)
-
-    fig.tight_layout()
+    ax.grid(True, axis="y", linestyle="--", alpha=0.25)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    fig.savefig(output_path, dpi=POSTER_DPI, bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -161,6 +168,15 @@ def run_parameter_sweep():
     csv_dir.mkdir(parents=True, exist_ok=True)
 
     market_data = load_market_data(data_dir / "simulation_input_2025.csv")
+    market_data["month"] = market_data["datetime"].dt.month
+
+    monthly_avg_price = market_data.groupby("month")["price_EUR_per_MWh"].mean()
+    year_avg_price = market_data["price_EUR_per_MWh"].mean()
+
+    market_data["monthly_price_factor"] = (
+        market_data["month"].map(monthly_avg_price) / year_avg_price
+    )
+
     market_data["grid_surplus_MWh"] = (
         market_data["total_production_MWh"]
         - market_data["total_consumption_MWh"]
@@ -190,7 +206,8 @@ def run_parameter_sweep():
             f"low_q={params['low_quantile']}, "
             f"high_q={params['high_quantile']}, "
             f"eff={params['round_trip_efficiency']}, "
-            f"margin={params['safety_margin']}"
+            f"margin={params['safety_margin']}, "
+            f"seasonal_strength={params['seasonal_strength']}"
         )
         print(f"[{index}/{total_combinations}] Running {strategy_name} with {combo_label}")
 
@@ -203,6 +220,8 @@ def run_parameter_sweep():
             "total_pumped_MWh": None,
             "total_generated_MWh": None,
             "deficit_reduction_MWh": None,
+            "shifted_pumped_energy_MWh": None,
+            "pumping_based_deficit_reduction_MWh": None,
             "surplus_absorbed_MWh": None,
             "renewable_surplus_absorbed_MWh": None,
             "final_storage_MWh": None,
@@ -231,6 +250,8 @@ def run_parameter_sweep():
                     "total_pumped_MWh": metrics.get("total_pumped_MWh"),
                     "total_generated_MWh": metrics.get("total_generated_MWh"),
                     "deficit_reduction_MWh": metrics.get("deficit_reduction_MWh"),
+                    "shifted_pumped_energy_MWh": metrics.get("shifted_pumped_energy_MWh"),
+                    "pumping_based_deficit_reduction_MWh": metrics.get("pumping_based_deficit_reduction_MWh"),
                     "surplus_absorbed_MWh": metrics.get("surplus_absorbed_MWh"),
                     "renewable_surplus_absorbed_MWh": metrics.get("renewable_surplus_absorbed_MWh"),
                     "final_storage_MWh": metrics.get("final_storage_MWh"),
@@ -271,10 +292,10 @@ def main():
     plot_path = parameter_sweep_dir / "parameter_sweep_tradeoff.png"
     create_tradeoff_plot(sweep_df, plot_path)
 
-    # save_pareto_frontier_plot(
-    #     sweep_df,
-    #     Path("outputs") / "parameter_sweep" / "pareto_frontier.png",
-    # )
+    save_pareto_frontier_plot(
+        sweep_df,
+        Path("outputs") / "parameter_sweep" / "pareto_frontier.png",
+    )
 
 
 if __name__ == "__main__":

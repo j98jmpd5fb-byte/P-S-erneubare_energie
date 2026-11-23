@@ -17,9 +17,12 @@ def calculate_terminal_storage_value(
 
 def calculate_metrics(results, plant=None):
     """Calculate economic, storage, and grid-balancing metrics."""
-    total_pumped = float(results.get("pump_MWh", 0.0).sum())
-    total_generated = float(results.get("generation_MWh", 0.0).sum())
-    total_profit = float(results.get("profit_EUR", 0.0).sum())
+    total_profit_EUR = float(results.get("profit_EUR", 0.0).sum())
+    total_pumped_MWh = float(results.get("pump_MWh", 0.0).sum())
+    total_generated_MWh = float(results.get("generation_MWh", 0.0).sum())
+    total_profit = total_profit_EUR
+    total_pumped = total_pumped_MWh
+    total_generated = total_generated_MWh
     total_cost = float(results.get("cost_EUR", 0.0).sum())
     total_revenue = float(results.get("revenue_EUR", 0.0).sum())
 
@@ -74,10 +77,23 @@ def calculate_metrics(results, plant=None):
         .sum()
     )
 
+    # Original deficit reduction is based on total generation during import hours,
+    # so it includes generation from natural inflow as well as pumped storage.
     deficit_reduction_MWh = (
         results.loc[deficit_generate_mask, ["generation_MWh", "import_MW"]]
         .min(axis=1)
         .sum()
+    )
+
+    round_trip_efficiency = getattr(
+        plant,
+        "roundtrip_efficiency",
+        getattr(plant, "round_trip_efficiency", 0.75),
+    )
+    shifted_pumped_energy_MWh = total_pumped_MWh * round_trip_efficiency
+    pumping_based_deficit_reduction_MWh = min(
+        deficit_reduction_MWh,
+        shifted_pumped_energy_MWh,
     )
 
     renewable_surplus_pump_mask = (
@@ -109,6 +125,8 @@ def calculate_metrics(results, plant=None):
         "total_deficit_before_MWh": total_deficit_before,
         "total_deficit_after_MWh": total_deficit_after,
         "deficit_reduction_MWh": deficit_reduction_MWh,
+        "shifted_pumped_energy_MWh": shifted_pumped_energy_MWh,
+        "pumping_based_deficit_reduction_MWh": pumping_based_deficit_reduction_MWh,
         "total_surplus_before_MWh": total_surplus_before,
         "total_surplus_after_MWh": total_surplus_after,
         "surplus_absorbed_MWh": surplus_absorbed_MWh,

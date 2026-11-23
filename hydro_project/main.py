@@ -18,6 +18,7 @@ from src.plots import (
     save_storage_adjusted_profit_vs_renewable_absorption_plot,
     save_monthly_renewable_surplus_absorbed_plot,
     save_deficit_before_after_week_plot,
+    save_yearly_storage_poster_plot,
 )
 from src.simulation import run_simulation
 from src.strategy import SCENARIO_STRATEGIES, automatic_price_thresholds
@@ -140,7 +141,7 @@ def main(dataset="simulation_input_2025.csv"):
             "title": "Generation only",
             "strategy": SCENARIO_STRATEGIES["generation_only_rolling_24h"],
             "strategy_kwargs": {
-                "seasonal_strength": 0.5,
+                "seasonal_strength": 0.3,
             },
         },
         "rolling_24h_price_arbitrage_max": {
@@ -150,8 +151,8 @@ def main(dataset="simulation_input_2025.csv"):
                 "low_quantile": 0.30,
                 "high_quantile": 0.85,
                 "round_trip_efficiency": 0.75,
-                "safety_margin": 1.15,
-                "seasonal_strength": 0.5,
+                "safety_margin": 1.05,
+                "seasonal_strength": 0.3,
             },
         },
         "renewable_support_conservative": {
@@ -161,10 +162,10 @@ def main(dataset="simulation_input_2025.csv"):
                 "min_surplus_mwh": 0.0,
                 "min_renewable_fraction": 0.5,
                 "low_quantile": 0.20,
-                "high_quantile": 0.70,
+                "high_quantile": 0.90,
                 "round_trip_efficiency": 0.75,
-                "safety_margin": 1.00,
-                "seasonal_strength": 0.5,
+                "safety_margin": 0.95,
+                "seasonal_strength": 0.3,
             },
         },
         "renewable_support_balanced": {
@@ -174,10 +175,10 @@ def main(dataset="simulation_input_2025.csv"):
                 "min_surplus_mwh": 0.0,
                 "min_renewable_fraction": 0.4,
                 "low_quantile": 0.20,
-                "high_quantile": 0.80,
+                "high_quantile": 0.85,
                 "round_trip_efficiency": 0.75,
-                "safety_margin": 0.95,
-                "seasonal_strength": 0.5,
+                "safety_margin": 0.85,
+                "seasonal_strength": 0.3,
             },
         },
         "renewable_support_aggressive": {
@@ -187,10 +188,10 @@ def main(dataset="simulation_input_2025.csv"):
                 "min_surplus_mwh": 0.0,
                 "min_renewable_fraction": 0.3,
                 "low_quantile": 0.20,
-                "high_quantile": 0.85,
+                "high_quantile": 0.90,
                 "round_trip_efficiency": 0.75,
-                "safety_margin": 0.90,
-                "seasonal_strength": 0.5,
+                "safety_margin": 0.85,
+                "seasonal_strength": 0.3,
             },
         },
         # "import_reduction": {
@@ -252,6 +253,8 @@ def main(dataset="simulation_input_2025.csv"):
                 "total_profit_EUR": metrics["total_profit_EUR"],
                 "terminal_storage_value_EUR": metrics["terminal_storage_value_EUR"],
                 "adjusted_total_profit_EUR": metrics["adjusted_total_profit_EUR"],
+                "shifted_pumped_energy_MWh": metrics["shifted_pumped_energy_MWh"],
+                "pumping_based_deficit_reduction_MWh": metrics["pumping_based_deficit_reduction_MWh"],
                 "final_storage_MWh": metrics["final_storage_MWh"],
             }]).to_string(index=False, float_format="{:.2f}".format)
         )
@@ -287,6 +290,25 @@ def main(dataset="simulation_input_2025.csv"):
 
 
     metrics_summary.to_csv(csv_dir / "metrics_summary.csv", index=False)
+
+
+    SAVE_ONLY_YEARLY_STORAGE_POSTER_PLOT = False
+
+    if SAVE_ONLY_YEARLY_STORAGE_POSTER_PLOT:
+        save_yearly_storage_poster_plot(
+            scenario_results=scenario_results,
+            output_path=Path("outputs") / "poster_plots" / "yearly_storage_poster_plot.png",
+            storage_capacity_mwh=plant.storage_capacity_MWh,
+            scenarios_to_plot={
+                "generation_only_rolling_24h": "Generation only",
+                "rolling_24h_price_arbitrage_max": "Rolling 24h arbitrage",
+                "renewable_support_balanced": "Renewable balanced",
+            },
+            smoothing_hours=168,  # 7-day smoothing
+        )
+        return
+
+
     save_scenario_comparison_plot(metrics_summary, core_dir)
     volatile_week = find_most_volatile_week(
         scenario_results["generation_only_rolling_24h"]
@@ -363,6 +385,8 @@ def main(dataset="simulation_input_2025.csv"):
         "total_pumped_MWh",
         "total_generated_MWh",
         "deficit_reduction_MWh",
+        "shifted_pumped_energy_MWh",
+        "pumping_based_deficit_reduction_MWh",
         "surplus_absorbed_MWh",
         "renewable_surplus_absorbed_MWh",
         "start_storage_MWh",
